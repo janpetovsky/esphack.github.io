@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ESP32 – Futuristic Control Deck</title>
+
+  <style>
+    :root{
+      --bg0:#050b14;
+      --bg1:#071427;
+      --panel:#0b1a2e99;
+      --panel2:#0b1a2ecc;
+      --line:#2aa7ff55;
+      --line2:#67d7ff80;
+      --text:#d7f3ff;
+      --muted:#9fdcff;
+      --cyan:#67d7ff;
+      --cyan2:#2aa7ff;
+      --danger:#ff4d6d; /* nepoužívám jako hlavní, jen kdybys chtěl varování */
+      --shadow: 0 18px 55px rgba(0,0,0,.55);
+      --glow: 0 0 18px rgba(103,215,255,.35), 0 0 46px rgba(42,167,255,.20);
+      --radius: 18px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+      margin:0;
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      color:var(--text);
+      font-family:var(--sans);
+      background:
+        radial-gradient(900px 700px at 20% 15%, rgba(103,215,255,.12), transparent 55%),
+        radial-gradient(900px 700px at 80% 85%, rgba(42,167,255,.10), transparent 60%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      overflow:hidden;
+    }
+
+    /* animované „hvězdné“ pozadí */
+    body::before{
+      content:"";
+      position:fixed;
+      inset:-40%;
+      background:
+        radial-gradient(circle at 20% 30%, rgba(103,215,255,.18), transparent 35%),
+        radial-gradient(circle at 75% 70%, rgba(42,167,255,.14), transparent 40%),
+        radial-gradient(circle at 55% 15%, rgba(103,215,255,.10), transparent 32%),
+        repeating-linear-gradient(90deg, rgba(103,215,255,.06) 0 1px, transparent 1px 16px);
+      filter: blur(0.2px);
+      opacity:.45;
+      transform: translate3d(0,0,0);
+      animation: drift 16s linear infinite;
+      pointer-events:none;
+    }
+
+    @keyframes drift{
+      0% { transform: translate3d(-2%, -1%, 0) rotate(0.3deg); }
+      50% { transform: translate3d( 2%, 1%, 0) rotate(-0.2deg); }
+      100% { transform: translate3d(-2%, -1%, 0) rotate(0.3deg); }
+    }
+
+    /* „HUD“ rám */
+    .deck{
+      width:min(720px, 94vw);
+      position:relative;
+      padding:18px;
+    }
+
+    .frame{
+      background: linear-gradient(180deg, var(--panel), var(--panel2));
+      border:1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow), var(--glow);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      overflow:hidden;
+      position:relative;
+    }
+
+    /* jemné vnitřní linky */
+    .frame::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        radial-gradient(600px 240px at 20% 10%, rgba(103,215,255,.10), transparent 60%),
+        radial-gradient(600px 240px at 80% 90%, rgba(42,167,255,.10), transparent 60%),
+        repeating-linear-gradient(180deg, rgba(103,215,255,.08) 0 1px, transparent 1px 18px);
+      opacity:.55;
+      pointer-events:none;
+    }
+
+    .inner{
+      position:relative;
+      padding:18px 18px 14px;
+    }
+
+    /* horní hlavička */
+    .top{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:14px;
+    }
+
+    .brand{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+
+    .title{
+      margin:0;
+      font-size:18px;
+      letter-spacing:1.2px;
+      text-transform:uppercase;
+      font-weight:800;
+    }
+
+    .subtitle{
+      margin:0;
+      font-family:var(--mono);
+      font-size:12px;
+      color:var(--muted);
+      opacity:.95;
+    }
+
+    .chip{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      align-items:flex-end;
+      font-family:var(--mono);
+      font-size:12px;
+      color:var(--muted);
+      text-align:right;
+    }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 10px;
+      border-radius:12px;
+      border:1px solid var(--line2);
+      background: rgba(5,11,20,.55);
+      box-shadow: 0 0 0 1px rgba(103,215,255,.10) inset;
+    }
+
+    .dot{
+      width:9px;
+      height:9px;
+      border-radius:50%;
+      background: var(--cyan);
+      box-shadow: 0 0 10px rgba(103,215,255,.65);
+    }
+
+    /* tabulka */
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:12px;
+    }
+
+    th{
+      text-align:center;
+      font-size:12px;
+      font-family:var(--mono);
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:1.2px;
+      padding:6px 0;
+    }
+
+    td{
+      text-align:center;
+    }
+
+    /* tlačítka */
+    button{
+      width:100%;
+      padding:13px 12px;
+      border-radius:16px;
+      border:1px solid rgba(103,215,255,.35);
+      background: linear-gradient(180deg, rgba(5,11,20,.55), rgba(7,20,39,.75));
+      color:var(--text);
+      font-weight:800;
+      letter-spacing:.5px;
+      cursor:pointer;
+      position:relative;
+      box-shadow:
+        0 10px 26px rgba(0,0,0,.35),
+        0 0 0 1px rgba(103,215,255,.10) inset;
+      transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    }
+
+    button:hover{
+      border-color: rgba(103,215,255,.70);
+      box-shadow:
+        0 14px 34px rgba(0,0,0,.40),
+        0 0 0 1px rgba(103,215,255,.18) inset,
+        0 0 18px rgba(103,215,255,.16);
+      transform: translateY(-1px);
+    }
+
+    button:active{
+      transform: translateY(1px);
+      box-shadow:
+        0 8px 18px rgba(0,0,0,.35),
+        0 0 0 1px rgba(103,215,255,.14) inset;
+    }
+
+    /* ON/OFF verze – stále laděné do světle modré */
+    .btn-on{
+      background:
+        radial-gradient(180px 60px at 20% 20%, rgba(103,215,255,.35), transparent 65%),
+        linear-gradient(180deg, rgba(5,11,20,.45), rgba(7,20,39,.85));
+      border-color: rgba(103,215,255,.65);
+    }
+
+    .btn-off{
+      background:
+        radial-gradient(180px 60px at 80% 25%, rgba(42,167,255,.28), transparent 62%),
+        linear-gradient(180deg, rgba(5,11,20,.45), rgba(7,20,39,.85));
+      border-color: rgba(42,167,255,.55);
+      opacity:.92;
+    }
+
+    /* spodní status */
+    .status{
+      margin-top:14px;
+      border-radius: 16px;
+      border:1px solid rgba(103,215,255,.30);
+      background: rgba(5,11,20,.55);
+      padding:12px 12px;
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+      box-shadow: 0 0 0 1px rgba(103,215,255,.10) inset;
+    }
+
+    .row{
+      display:flex;
+      gap:10px;
+      align-items:baseline;
+      justify-content:space-between;
+      font-family:var(--mono);
+      font-size:12px;
+      color:var(--muted);
+      padding:8px 10px;
+      border-radius: 14px;
+      border:1px dashed rgba(103,215,255,.22);
+      background: rgba(7,20,39,.35);
+      overflow:hidden;
+    }
+
+    .row b{
+      font-weight:800;
+      color:var(--text);
+      letter-spacing:.6px;
+    }
+
+    #stav, #cas{
+      color: var(--cyan);
+      font-weight:900;
+      letter-spacing:.6px;
+      text-shadow: 0 0 10px rgba(103,215,255,.35);
+    }
+
+    .foot{
+      margin-top:10px;
+      font-family:var(--mono);
+      font-size:11px;
+      color:#8bd6ff;
+      opacity:.75;
+    }
+
+    /* mobil: status pod sebe */
+    @media (max-width:520px){
+      table{ border-spacing:10px; }
+      .status{ grid-template-columns: 1fr; }
+      .title{ font-size:16px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="deck">
+    <div class="frame">
+      <div class="inner">
+
+        <div class="top">
+          <div class="brand">
+            <p class="title">CONTROL DECK</p>
+            <p class="subtitle">ESP32 / Local Web UI • Futuristic Theme</p>
+          </div>
+
+          <div class="chip">
+            <div class="badge">
+              <span class="dot"></span>
+              <span>ONLINE</span>
+            </div>
+            <div>MODE: <span style="color:var(--cyan); font-weight:900;">SIM</span></div>
+          </div>
+        </div>
+
+        <table>
+          <tr>
+            <th>Activate</th>
+            <th>Deactivate</th>
+          </tr>
+
+          <tr>
+            <td><button class="btn-on" onclick="setText('LED 1 zapnutá')">LED 1 • ON</button></td>
+            <td><button class="btn-off" onclick="setText('LED 1 vypnutá')">LED 1 • OFF</button></td>
+          </tr>
+          <tr>
+            <td><button class="btn-on" onclick="setText('LED 2 zapnutá')">LED 2 • ON</button></td>
+            <td><button class="btn-off" onclick="setText('LED 2 vypnutá')">LED 2 • OFF</button></td>
+          </tr>
+          <tr>
+            <td><button class="btn-on" onclick="setText('LED 3 zapnutá')">LED 3 • ON</button></td>
+            <td><button class="btn-off" onclick="setText('LED 3 vypnutá')">LED 3 • OFF</button></td>
+          </tr>
+          <tr>
+            <td><button class="btn-on" onclick="setText('LED 4 zapnutá')">LED 4 • ON</button></td>
+            <td><button class="btn-off" onclick="setText('LED 4 vypnutá')">LED 4 • OFF</button></td>
+          </tr>
+          <tr>
+            <td><button class="btn-on" onclick="setText('LED 5 zapnutá')">LED 5 • ON</button></td>
+            <td><button class="btn-off" onclick="setText('LED 5 vypnutá')">LED 5 • OFF</button></td>
+          </tr>
+          <tr>
+            <td><button class="btn-on" onclick="setText('LED 6 zapnutá')">LED 6 • ON</button></td>
+            <td><button class="btn-off" onclick="setText('LED 6 vypnutá')">LED 6 • OFF</button></td>
+          </tr>
+        </table>
+
+        <div class="status">
+          <div class="row"><b>STATUS</b> <span id="stav">---</span></div>
+          <div class="row"><b>LAST EVENT</b> <span id="cas">---</span></div>
+        </div>
+
+        <div class="foot">
+          NOTE: Pro ESP32 pak nahradíš onclick za odkazy /led1on… a status bude vracet server.
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function setText(text){
+      document.getElementById("stav").innerText = text;
+      const d = new Date();
+      document.getElementById("cas").innerText =
+        d.getHours().toString().padStart(2,'0') + ":" +
+        d.getMinutes().toString().padStart(2,'0') + ":" +
+        d.getSeconds().toString().padStart(2,'0');
+    }
+  </script>
+</body>
+</html>
